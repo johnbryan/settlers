@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Settling the Isle of Catan</title>
+  <script src="./helpers.js"></script>
+  <script src="./board.js"></script>
+  <script src="./devcards.js"></script>
+  <script src="./main.js"></script>
+
+  <!-- need a server for modules, then export in helpers and import in main -->
+  <!-- <script type="module" src="./main.js"></script> -->
+
+  <style>
+    canvas { border: 1px solid black; }
+  </style>
+</head>
+<body onload="initialize()">
+  <h3>Settlers!</h3>
+  <canvas id="table" height="600" width="1000" />
+</body>
+</html>
