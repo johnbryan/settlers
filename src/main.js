@@ -1,20 +1,21 @@
-// import {xyCoord, drawPoint, drawHex} from './helpers.js';
-// from board.js
+import {XyCoord, DrawUtils} from './helpers.js';
+import {DevCard} from './devcards.js';
+import {Board, Doodler} from './board.js';
 
-let canvas;
-let ctx;
+const canvas = document.getElementById('table');
+const ctx = canvas.getContext('2d');
+const drawUtils = new DrawUtils(ctx);
 
 let debug = false;
 
 const ACT_INSTRUCTION = `Take your next action (s,c,r,d,t), or Enter to pass`;
 const RESOURCE_CHOICE_NUMBERS = '1=brick, 2=wood, 3=sheep, 4=wheat, 5=ore';
 
-// enum
 const structureTypes = {
   settlement: 'settlement',
   city: 'city',
   road: 'road',
-  devCard: 'dev card',
+  devCard: 'devCard',
 }
 
 function getCosts(type) {
@@ -66,27 +67,32 @@ class Building {
 
   draw() {
     if (this.isCity) {
-      drawCity(ctx, this.coord, this.owner.color);
+      drawUtils.drawCity(this.coord, this.owner.color);
     }
     else {
-      drawSettlement(ctx, this.coord, this.owner.color);
+      drawUtils.drawSettlement(this.coord, this.owner.color);
     }
   }
 }
 
 class Player {
-  constructor(name, color) {
+  constructor(game, name, color) {
+    this.game = game;
     this.name = name;
     this.color = color;
     this.buildings = [];
     this.roads = [];  // list of [pt1, pt2] pairs?
+
+    // Start with what is needed for initial placement. This is hidden from the
+    // players until initial placement is done.
     this.resources = {
-      brick: 0,
-      wood: 0,
-      sheep: 0,
-      wheat: 0,
+      brick: 4,
+      wood: 4,
+      sheep: 2,
+      wheat: 2,
       ore: 0,
     }
+
     this.devCardsUnused = [];
     this.devCardsUsed = [];
   }
@@ -108,14 +114,14 @@ class Player {
   }
 
   getVictoryPoints() {
-    const buildingPoints = 
+    const buildingPoints =
         this.buildings
             .map(b => b.isCity ? 2 : 1)
             .reduce((total, pts) => total + pts, 0);
-    
+
     const longestRoadPoints = 0;
     const largestArmyPoints = 0;
-    const pointCards = this.devCardsUsed.filter(c => c.type==devCardTypes.point).length;
+    const pointCards = this.devCardsUsed.map(c => c.pointValue).reduce((total, pts) => total + pts, 0);
 
     return buildingPoints + longestRoadPoints + largestArmyPoints + pointCards;
   }
@@ -139,17 +145,20 @@ class Player {
     this.resources.ore -= costs.ore;
   }
 
-  buildSettlement(coord, isFree) {
-    this.buildings.push(new Building(this, coord));
-
-    // use resources if we're not in initial setup phase
-    if (!isFree) {
-      this.deductResources(structureTypes.settlement);
+  buildSettlement(coord) {
+    if (this.game.board.isOccupied(coord)) {
+      console.log('This spot already taken!');
+      return false;
     }
+
+    this.deductResources(structureTypes.settlement);
+    this.buildings.push(new Building(this, coord));
+    this.game.board.occupyVertex(coord, this);
+    return true;
   }
 
   // return false if coord is not a settlement
-  buildCityOrReturnFalse(coord) {
+  buildCity(coord) {
     for (const building of this.buildings) {
       if (building.coord.equals(coord)) {
         if (building.isCity) {
@@ -157,8 +166,8 @@ class Player {
           return false;
         }
 
-        building.isCity = true;
         this.deductResources(structureTypes.city);
+        building.isCity = true;
         return true;
       }
     }
@@ -166,58 +175,50 @@ class Player {
     return false;
   }
 
-  buildRoad(coord1, coord2, isFree) {
-    this.roads.push([coord1, coord2]);
-
-    // use resources if we're not in initial setup phase
-    if (!isFree) {
-      this.deductResources(structureTypes.road);
+  buildRoad(coord1, coord2) {
+    const midpoint = XyCoord.averageCoords([coord1, coord2]);
+    if (this.game.board.isOccupied(midpoint)) {
+      console.log('This spot already taken!');
+      return false;
     }
-    // update longest road
+
+    this.deductResources(structureTypes.road);
+    this.roads.push([coord1, coord2]);
+    this.game.board.occupyEdge(midpoint, this);
+    return true;
+
+    // update longest road?
   }
 
   buyDevCard() {
-    const card = new DevCard();
-    const list =
-        card.type == devCardTypes.point ?
-            this.devCardsUsed :
-            this.devCardsUnused;
+    const card = new DevCard(this.game);
+    const list = card.isUsable ? this.devCardsUnused : this.devCardsUsed;
     list.push(card);
     this.deductResources(structureTypes.devCard);
   }
 
-  useDevCard(index, game) {
-    const target = this.devCardsUnused[index];
-    target.use(game);
-
-    const totalUnused = this.devCardsUnused.length;
-    const left = this.devCardsUnused.slice(0, index);
-    const right = this.devCardsUnused.slice(index+1, totalUnused);
-    this.devCardsUnused = left.concat(right);
+  drawRoads() {
+    this.roads.forEach(([pt1, pt2]) => drawUtils.drawRoad(pt1, pt2, this.color));
   }
 
-  draw() {
-    this.roads.forEach(
-        ([pt1, pt2]) => drawRoad(ctx, pt1, pt2, this.color));
+  drawBuildings() {
     this.buildings.forEach(b => b.draw());
   }
 }
 
 class Game {
   constructor() {
-    this.board = new Board();
+    this.board = new Board(drawUtils);
 
     this.players = [
-      new Player("Dena", "red"),
-      new Player("John", "white"),
-      new Player("Bob", "blue"),
+      new Player(this, "Dena", "red"),
+      new Player(this, "John", "white"),
+      // new Player(this, "Bob", "blue"),
     ];
 
     this.whoseTurn = 0;  // index in this.players
 
     this.instructions = "";
-    this.instructionsLastUpdatedMs = 0;
-    this.instructionsQueue = [];
 
     this.phases = {
       initialPlacement: 'initialPlacement',
@@ -240,15 +241,6 @@ class Game {
   // ensures each instruction is shown for a minimum time period
   setInstructions(newInstructions) {
     this.instructions = newInstructions;
-
-    // this.instructionsQueue.push(newInstructions);
-    // const minShownMs = 1500;
-    // const elapsed = Date.now() - this.instructionsLastUpdatedMs;
-    // console.log(`Setting instructions to "newInstructions", called at ${Date.now()}, should update in ${minShownMs - elapsed} ms`);
-    // setTimeout(() => {
-    //   this.instructions = newInstructions;
-    //   this.instructionsLastUpdatedMs = Date.now();
-    // }, minShownMs - elapsed);  // negative timeout treated as zero
   }
 
   startInitialPlacements() {
@@ -282,7 +274,7 @@ class Game {
   }
 
   startTradingPhase() {
-    console.error(`Trading currently just supports 3-1 with bank`);
+    console.log(`Trading currently just supports 3-1 with bank`);
     const resources = this.currentPlayer().resources;
     if (resources.brick < 3
         && resources.wood < 3
@@ -306,7 +298,7 @@ class Game {
       console.log('You need three of something to trade!');
       return;
     }
-    
+
     this.currentPlayer().resources[selected] -= 3;
     this.setInstructions(`Traded in 3 ${selected}. What do you want in return?`);
     this.startPickResourcesPhase(1);
@@ -335,35 +327,38 @@ class Game {
   }
 
   handleSetupClick(coord) {
-    // time for a settlement
+    // if time for a settlement
     if (this.currentPlayer().buildings.length == this.currentPlayer().roads.length) {
       const snappedCoord = coord.snappedToGrid();
-      if (!this.board.isVertex(snappedCoord) 
+      if (!this.board.isVertex(snappedCoord)
           || !snappedCoord.isVeryCloseTo(coord)) {
         console.log("did not click a vertex, doing nothing.");
         return;
       }
-  
-      this.currentPlayer().buildSettlement(snappedCoord, true);
+
+      const success = this.currentPlayer().buildSettlement(snappedCoord);
+      if (!success) return;
+
       if (this.currentPlayer().getVictoryPoints() >= 2) {
-        const tiles = this.board.getAdjacentTiles(snappedCoord);
+        const tiles = this.board.getAdjacentTileCenters(snappedCoord);
         this.currentPlayer().addResourceList(tiles.map(t => t.getResourceName()));
       }
 
       this.setInstructions(`place your road`);
     }
 
-    // time for a road
+    // if time for a road
     else {
       const snappedToMid = coord.snappedToMidpointGrid();
-      if (!this.board.isEdgeMidPoint(snappedToMid) 
+      if (!this.board.isEdgeMidPoint(snappedToMid)
           || !snappedToMid.isVeryCloseTo(coord)) {
         console.log("did not click an edge, doing nothing.");
         return;
       }
-  
+
       const endsOfRoad = this.board.getVertexesForMidpoint(snappedToMid);
-      this.currentPlayer().buildRoad(endsOfRoad[0], endsOfRoad[1], true);
+      const success = this.currentPlayer().buildRoad(endsOfRoad[0], endsOfRoad[1]);
+      if (!success) return;
 
       if (this.players[0].getVictoryPoints() >= 2) {
         // done with setup phase
@@ -384,44 +379,46 @@ class Game {
   }
 
   handleBuildClick(coord) {
+    let success = false;
     if (this.trynaBuildType == structureTypes.settlement) {
       const snappedCoord = coord.snappedToGrid();
-      if (!this.board.isVertex(snappedCoord) 
+      if (!this.board.isVertex(snappedCoord)
           || !snappedCoord.isVeryCloseTo(coord)) {
         console.log("did not click a vertex, doing nothing.");
         return;
       }
-  
-      this.currentPlayer().buildSettlement(snappedCoord);
+
+      success = this.currentPlayer().buildSettlement(snappedCoord);
     }
     else if (this.trynaBuildType == structureTypes.city) {
       const snappedCoord = coord.snappedToGrid();
-      if (!this.board.isVertex(snappedCoord) 
+      if (!this.board.isVertex(snappedCoord)
           || !snappedCoord.isVeryCloseTo(coord)) {
         console.log("did not click a vertex, doing nothing.");
         return;
       }
-  
-      const success = this.currentPlayer().buildCityOrReturnFalse(snappedCoord);
-      if (!success) return;
+
+      success = this.currentPlayer().buildCity(snappedCoord);
     }
     else if (this.trynaBuildType == structureTypes.road) {
       const snappedToMid = coord.snappedToMidpointGrid();
-      if (!this.board.isEdgeMidPoint(snappedToMid) 
+      if (!this.board.isEdgeMidPoint(snappedToMid)
           || !snappedToMid.isVeryCloseTo(coord)) {
         console.log("did not click an edge, doing nothing.");
         return;
       }
-  
-      this.currentPlayer().buildRoad(...this.board.getVertexesForMidpoint(snappedToMid));
+
+      success = this.currentPlayer().buildRoad(...this.board.getVertexesForMidpoint(snappedToMid));
     }
 
-    this.phase = this.phases.acting;
-    this.setInstructions(ACT_INSTRUCTION);
+    if (success) {
+      this.phase = this.phases.acting;
+      this.setInstructions(ACT_INSTRUCTION);
+    }
   }
 
   handleActionClick(coord) {
-    console.error('action clicks not supported yet');
+    console.log('action clicks not supported yet');
   }
 
   handleClick(coord) {
@@ -475,11 +472,9 @@ class Game {
     for (const player of this.players) {
       for (const building of player.buildings) {
         // find adj tiles, filter to number, collect 1 or 2
-        const relevantTiles = this.board.getAdjacentTiles(building.coord).filter(tile => tile.number==number);
+        const relevantTiles = this.board.getAdjacentTileCenters(building.coord).filter(tile => tile.number==number);
         for (const tile of relevantTiles) {
-          if (!tile.hasRobber) {
-            player.addResource(tile.getResourceName(), building.isCity ? 2 : 1);
-          }
+          player.addResource(tile.getResourceName(), building.isCity ? 2 : 1);
         }
       }
     }
@@ -491,14 +486,12 @@ class Game {
 
     if (index < totalUnused) {
       const target = this.currentPlayer().devCardsUnused[index];
-      target.use(this);
+      target.use();
 
       const left = this.currentPlayer().devCardsUnused.slice(0, index);
       const right = this.currentPlayer().devCardsUnused.slice(index+1, totalUnused);
       this.currentPlayer().devCardsUnused = left.concat(right);
       this.currentPlayer().devCardsUsed.push(target);
-
-      return;
     }
     else {
       console.log(`${numberInput} not an unplayed dev card?`);
@@ -506,24 +499,30 @@ class Game {
   }
 
   draw() {
+    // Must be in order - things drawn second will be layered on top
     this.board.draw();
-    this.players.forEach(p => p.draw());
+    this.players.forEach(p => p.drawRoads());
+    this.players.forEach(p => p.drawBuildings());
 
     const player = this.currentPlayer();
-    drawInstructions(`${player.name}, ${this.instructions}!`);
-    drawResourceCardImages(player.resources);
-    drawDevCardImages(player.devCardsUnused, player.devCardsUsed);
-    drawVictoryPoints(player.getVictoryPoints());
+    drawUtils.drawCurrentPlayerColorIcon(player.color);
+    drawUtils.drawInstructions(`${player.name}, ${this.instructions}!`);
+
+    if (this.phase != this.phases.initialPlacement) {
+      drawUtils.drawResourceCardImages(player.resources);
+      drawUtils.drawDevCardImages(player.devCardsUnused, player.devCardsUsed);
+      drawUtils.drawVictoryPoints(player.getVictoryPoints());
+    }
   }
 }
 
-const doodler = new Doodler();
+const doodler = new Doodler(drawUtils);
 const game = new Game();
 
 function onClick(event) {
   const mouseX = event.pageX - canvas.offsetLeft;
   const mouseY = event.pageY - canvas.offsetTop;
-  const rawCoord = xyCoord.fromTrueCoords(mouseX, mouseY);
+  const rawCoord = XyCoord.fromTrueCoords(mouseX, mouseY);
 
   game.handleClick(rawCoord);
 
@@ -532,16 +531,12 @@ function onClick(event) {
   }
 }
 
-function initialize() {
-  canvas = document.getElementById('table');
-  ctx = canvas.getContext('2d');
+canvas.addEventListener('click', onClick, false);
 
-  canvas.addEventListener('click', onClick, false);
-}
+setInterval(draw, 50);
 
-drawInterval = setInterval(draw, 50);
 function draw() {
-  if (!ctx) return;
+  if (!drawUtils) return;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   game.draw();
@@ -552,14 +547,14 @@ function draw() {
     // Show grid
     // for (let x=0; x<9; x++) {
     //   for (let y=0; y<7; y++) {
-    //     drawPoint(ctx, new xyCoord(x, y));
+    //     drawPoint(ctx, new XyCoord(x, y));
     //   }
     // }
 
     // Show midpoint grid
     for (let x=0; x<8; x+=.1) {
       for (let y=0; y<7; y+=.1) {
-        drawPoint(ctx, new xyCoord(x, y).snappedToMidpointGrid());
+        drawUtils.drawPoint(ctx, new XyCoord(x, y).snappedToMidpointGrid());
       }
     }
   }
@@ -582,16 +577,6 @@ function handleNumberInput(n) {
   }
 }
 
-function handleBuildPhaseKeyInput(keyCode) {
-  if (keyCode == 27) {  // esc
-    game.setInstructions(`canceled ${game.phase}. ` + ACT_INSTRUCTION);
-    game.phase = game.phases.acting;
-  }
-  else {
-    console.log("Unused keycode (build phase): " + keyCode);
-  }
-}
-
 document.onkeydown = function(e) {
   if (game.phase == game.phases.initialPlacement) {
     console.log("no doing stuff in setup phase!");
@@ -599,57 +584,57 @@ document.onkeydown = function(e) {
   }
 
   // Digit 0-9. Different uses in different phases.
-  if (48 <= e.keyCode && e.keyCode < 58) {
-    let n = e.keyCode - 48;
+  if (0 <= e.key && e.key <= 9) {
+    let n = e.key;
     if (e.shiftKey) n+=10;  // so we can get 10,11,12
 
     handleNumberInput(n);
   }
   else if (game.phase == game.phases.building ||
            game.phase == game.phases.trading) {
-    if (keyCode == 27) {  // esc
+    if (e.key == "Escape") {
       game.setInstructions(`canceled ${game.phase}. ` + ACT_INSTRUCTION);
       game.phase = game.phases.acting;
     }
     else {
-      console.log(`Unused keycode ${e.keyCode} in ${game.phase} phase.`);
+      console.log(`Unused key "${e.key}" in ${game.phase} phase.`);
     }
   }
   else if (game.phase == game.phases.acting) {
-    switch (e.keyCode) {
-      case 13:  //enter
+    switch (e.key) {
+      case "Enter":
         game.nextPlayerTurn();
         break;
-      case 27: //esc
+      case "Escape":
         game.phase = game.phases.acting;
         break;
-      case 67:  //c
+      case "c":
         game.startBuildPhase(structureTypes.city);
         break;
-      case 68:  //d
+      case "d":
         game.startBuildPhase(structureTypes.devCard);
         break;
-      case 70:  //f
+      case "f":
         game.setInstructions('pick a freebie!');
         game.startPickResourcesPhase(1);
         break;
-      case 82:  //r
+      case "r":
         game.startBuildPhase(structureTypes.road);
         break;
-      case 83:  //s
+      case "s":
         game.startBuildPhase(structureTypes.settlement);
         break;
-      case 84:  //t
+      case "t":
         game.startTradingPhase();
         break;
-      case 85:  //u
+      case "u":
         debug = !debug;
         break;
       default:
-        console.log(`Unused keycode ${e.keyCode} in ${game.phase} phase.`);
+        console.log(`Unused key "${e.key}" in ${game.phase} phase.`);
     }
   }
   else {
-    console.log(`Unused keycode ${e.keyCode} in ${game.phase} phase.`);
+    console.log(`Unused key "${e.key}" in ${game.phase} phase.`);
   }
 };

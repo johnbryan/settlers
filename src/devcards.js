@@ -13,20 +13,22 @@ const devCardImages = {
   point: new Image(),
   unturned: new Image(),
 }
-devCardImages.unturned.src = 'images/devCardBack.jpg';
-devCardImages.knight.src = 'images/Knight.jpg';
-devCardImages.yop.src = 'images/YOP.jpg';
-devCardImages.monopoly.src = 'images/Monopoly.jpg';
-devCardImages.roadBuilding.src = 'images/RoadBuilding.jpg';
-devCardImages.point.src = 'images/Point.jpg';
+devCardImages.unturned.src = '../images/devCardBack.jpg';
+devCardImages.knight.src = '../images/Knight.jpg';
+devCardImages.yop.src = '../images/YOP.jpg';
+devCardImages.monopoly.src = '../images/Monopoly.jpg';
+devCardImages.roadBuilding.src = '../images/RoadBuilding.jpg';
+devCardImages.point.src = '../images/Point.jpg';
 
 class DevCard {
-  constructor() {
-    this.type = this.chooseRandomType();
-    // this.isUsed = this.type == devCardTypes.point;
+  constructor(game) {
+    this.game = game;
+    this.type = DevCard.chooseRandomType();
+    this.isUsable = this.type != devCardTypes.point;
+    this.pointValue = this.type == devCardTypes.point ? 1 : 0;
   }
 
-  chooseRandomType() {
+  static chooseRandomType() {
     const rand = Math.random();
     if (rand < .4) return devCardTypes.yop;
     if (rand < .7) return devCardTypes.point;
@@ -37,16 +39,16 @@ class DevCard {
     return devCardImages[this.type];
   }
 
-  use(game) {
+  use() {
     console.log(`Using ${this.type} card!`);
 
     switch (this.type) {
       case devCardTypes.knight:
-        game.startRobberPhase('you played a Knight!');
+        this.game.startRobberPhase('you played a Knight!');
         break;
       case devCardTypes.yop:
-        game.setInstructions('you played a YOP! Pick 2 resources.')
-        game.startPickResourcesPhase(2);
+        this.game.setInstructions('you played a YOP! Pick 2 resources.')
+        this.game.startPickResourcesPhase(2);
         break;
       case devCardTypes.monopoly:
         console.error("haven't programmed monopoly cards yet!");
@@ -55,10 +57,12 @@ class DevCard {
         console.error("haven't programmed road building cards yet!");
         break;
       case devCardTypes.point:
-        console.log("point cards don't need to/cannot be used.");
+        console.error("point cards don't need to/cannot be used.");
       default:
         console.error(`haven't programmed ${this.type} cards yet!`);
     }
     // this.isUsed = true;
   }
 }
+
+export {DevCard};
