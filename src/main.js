@@ -1,6 +1,7 @@
 import {XyCoord, DrawUtils} from './helpers.js';
 import {DevCard} from './devcards.js';
 import {Board, Doodler} from './board.js';
+import * as ws from './ws.js';
 
 const canvas = document.getElementById('table');
 const ctx = canvas.getContext('2d');

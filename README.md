@@ -5,3 +5,5 @@ work well enough. `python -m http.server 8000` is another basic localhost web se
 If you just open the html file on your local filesystem it will fail because
 apparently `<script type="module"...` only works when run from a server due to
 CORS stuff.
+
+Then `npm start` in the server directory to do the websockets

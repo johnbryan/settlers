@@ -1,0 +1,17 @@
+{
+  "name": "svc1",
+  "version": "1.0.0",
+  "description": "Settlers game server to handle websockets",
+  "main": "service.js",
+  "scripts": {
+    "start": "nodemon service.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "johnbryan96@gmail.com",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.17.1",
+    "nodemon": "^2.0.7",
+    "ws": "^7.4.2"
+  }
+}
