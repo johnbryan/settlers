@@ -1,24 +1,17 @@
 const urlParams = new URLSearchParams(window.location.search);
 const gameId = urlParams.get('game');
-const webSocket = new WebSocket(`ws://${window.location.hostname}:5005/${gameId}`);
+export const webSocket = new WebSocket(`ws://${window.location.hostname}:5005/${gameId}`);
 
-webSocket.onmessage = (event) => {
-  console.log("Got a websocket event!");
-  console.log(event);
-
-  // do something
-};
+let bufferedMessages = [];
+sendMessage({});
 
 webSocket.onopen = (event) => {
   console.log("Websocket has been opened!");
-  console.log(event);
 
-  // Initial stuff
-  const message = {
-    gameId,
-  };
-  const payload = JSON.stringify(message);
-  webSocket.send(payload);
+  for (const msg of bufferedMessages) {
+    webSocket.send(msg);
+  }
+  bufferedMessages = [];
 };
 webSocket.onclose = (event) => {
   console.log("WebSocket was closed :(");
@@ -31,6 +24,15 @@ webSocket.onerror = (event) => {
 
 export function sendMessage(obj) {
   obj.gameId = gameId;
-  const payload = JSON.stringify(objj);
-  webSocket.send(payload);
+  const json = JSON.stringify(obj);
+
+  if (webSocket.readyState == WebSocket.OPEN) {
+    webSocket.send(json);
+  }
+  else if (webSocket.readyState == WebSocket.CONNECTING) {
+    bufferedMessages.push(json);
+  }
+  else {
+    console.error(`Websocket not connected! webSocket.readyState=${webSocket.readyState}`);
+  }
 }

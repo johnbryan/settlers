@@ -1,4 +1,6 @@
 import {XyCoord, getHexVertexes, ResourceTypes} from './helpers.js';
+import {DrawUtils} from './helpers.js';
+import {NUMBER_TILES, getShuffledResourceTiles} from './settlersConstants.js';
 
 const HEX_TILE_CENTER_POINTS = [
   new XyCoord(2, 0),
@@ -22,32 +24,9 @@ const HEX_TILE_CENTER_POINTS = [
   new XyCoord(4, 3),
 ];
 
-const INITIAL_TILE_COUNTS = new Map([
-  [ResourceTypes.wheat, 4],
-  [ResourceTypes.ore, 3],
-  [ResourceTypes.sheep, 4],
-  [ResourceTypes.wood, 4],
-  [ResourceTypes.brick, 3],
-  [ResourceTypes.desert, 1],
-]);
-const INITIAL_TILES = [];
-for (const [resource, count] of INITIAL_TILE_COUNTS) {
-  for (let i=0; i<count; i++) INITIAL_TILES.push(resource);
-}
-
-// https://stackoverflow.com/a/12646864/8636225
-function shuffleArray(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-  return array;
-}
-
 class Tile {
   // number is dice number
-  constructor(drawUtils, coord, resource, number) {
-    this.drawUtils = drawUtils;
+  constructor(coord, resource, number) {
     this.resource = resource;
     this.number = number;
     this.coord = coord;
@@ -58,47 +37,81 @@ class Tile {
   }
 
   draw() {
-    this.drawUtils.drawHex(this.coord, this.resource);
+    DrawUtils.drawHex(this.coord, this.resource);
     if (this.number) {
-      this.drawUtils.drawNumberTile(this.coord, this.number);
+      DrawUtils.drawNumberTile(this.coord, this.number);
     }
   }
 }
 
 class Board {
-  constructor(drawUtils) {
-    this.drawUtils = drawUtils;
-
-    this.occupiedVertexes = new Map();  // Map<ptHash, Player>
-    this.occupiedEdges = new Map();  // Map<ptHash, Player>
-    this.vertexesByMidpoint = new Map();  // Map<hash, [pt1, pt2]>
+  constructor() {
+    this.allHashCoords = new Map();  // Map<ptHash, XyCoord>
+    this.occupiedVertexes = new Map();  // Map<ptHash, playerIndex>
+    this.occupiedEdges = new Map();  // Map<ptHash, playerIndex>
+    this.vertexesByMidpoint = new Map();  // Map<ptHash, [pt1, pt2]>
     for (const centerCoord of HEX_TILE_CENTER_POINTS) {
       const vertexes = getHexVertexes(centerCoord);
       for (let i=0; i<5; i++) {
-        const hash = XyCoord.averageCoords([vertexes[i], vertexes[i+1]]).hash();
+        const midpoint = XyCoord.averageCoords([vertexes[i], vertexes[i+1]]);
+        const hash = midpoint.hash();
+        this.allHashCoords.set(hash, midpoint);
         this.occupiedEdges.set(hash, null);
         this.vertexesByMidpoint.set(hash, [vertexes[i], vertexes[i+1]]);
       }
-      const hash = XyCoord.averageCoords([vertexes[5], vertexes[0]]).hash();
+      const midpoint = XyCoord.averageCoords([vertexes[5], vertexes[0]]);
+      const hash = midpoint.hash();
+      this.allHashCoords.set(hash, midpoint);
       this.occupiedEdges.set(hash, null);
       this.vertexesByMidpoint.set(hash, [vertexes[5], vertexes[0]]);
 
       for (const vertex of getHexVertexes(centerCoord)) {
+        this.allHashCoords.set(vertex.hash(), vertex);
         this.occupiedVertexes.set(vertex.hash(), null);
       }
     }
 
-    // https://boardgamegeek.com/image/350486/droberts441
-    const numbers = [5,2,6,3,8,10,9,12,11,4,8,10,9,4,5,6,3,11];
-
-    this.resourceTileStack = shuffleArray(INITIAL_TILES.slice());  // copy + randomize
+    this.resourceTileStack = getShuffledResourceTiles();
+    this.tileResources = this.resourceTileStack.slice();
 
     let i = 0;
-    this.tileMap = new Map();
+    this.tileMap = new Map();  // Map<ptHash, Tile>
     for (const coord of HEX_TILE_CENTER_POINTS) {
-      const resourceType = this.resourceTileStack.pop(); // this.pickRandomTile();
-      const number = resourceType==ResourceTypes.desert ? null : numbers[i++];
-      this.tileMap.set(coord.hash(), new Tile(this.drawUtils, coord, resourceType, number));
+      const resourceType = this.resourceTileStack.pop();
+      const number = resourceType==ResourceTypes.desert ? null : NUMBER_TILES[i++];  // only increment 'i' if not a desert
+      this.tileMap.set(coord.hash(), new Tile(coord, resourceType, number));
+    }
+  }
+
+  setState(state) {
+    if (state.tileResources) {
+      for (const tile of state.tileResources) {
+        const coordHash = new XyCoord(tile.coord.x, tile.coord.y).hash();
+        this.tileMap.get(coordHash).resource = tile.resource;
+        this.tileMap.get(coordHash).number = tile.number;
+      }
+    }
+    if (state.occupiedVertexes) {
+      for (let i=0; i<state.occupiedVertexes.length; i++) {
+        const [hash, playerIndex] = state.occupiedVertexes[i];
+        this.occupiedVertexes.set(hash, playerIndex);
+      }
+    }
+    if (state.occupiedEdges) {
+      this.occupiedEdges = new Map(state.occupiedEdges);
+    }
+  }
+
+  getState() {
+    const tiles = Array.from(this.tileMap.values());
+
+    return {
+      tileResources: tiles.map(tile => {
+        const {coord, resource, number} = tile;
+        return {coord, resource, number};
+      }),
+      occupiedVertexes: Array.from(this.occupiedVertexes.entries()),
+      occupiedEdges: Array.from(this.occupiedEdges.entries()),
     }
   }
 
@@ -122,6 +135,12 @@ class Board {
 
   isOccupied(coord) {
     const hash = coord.hash();
+    return this.occupiedVertexes.get(hash) != null
+        || this.occupiedEdges.get(hash) != null;
+  }
+
+  getOccupantIndex(coord) {
+    const hash = coord.hash();
     return this.occupiedVertexes.get(hash) || this.occupiedEdges.get(hash);
   }
 
@@ -134,16 +153,15 @@ class Board {
   }
 
   draw() {
-    this.drawUtils.drawBackground();
+    DrawUtils.drawBackground();
     this.tileMap.forEach(tile => tile.draw());
   }
 }
 
 class Doodler {
-  constructor(drawUtils) {
+  constructor() {
     this.doodleCallbacks = [];
     this.fadingPoints = new Map();
-    this.drawUtils = drawUtils;
   }
 
   addCallback(doodleCallback) {
@@ -171,7 +189,7 @@ class Doodler {
         return;
       }
       const color = `rgba(0,0,0,${opacity})`;
-      this.drawUtils.drawPoint(coord, 5, color);
+      DrawUtils.drawPoint(coord, 5, color);
     });
   }
 }

@@ -7,10 +7,22 @@
 
   <style>
     canvas { border: 1px solid black; }
+    .title { font-size: larger; font-weight: bold; margin-right: 15px;}
   </style>
 </head>
 <body>
-  <h3>Settlers!</h3>
+  <div>
+    <span class="title">Settlers!</span>
+    <span>
+      <form id="nameForm">
+        Who dis?
+        <input id="nameInput" placeholder="Bob McBobbertson" />
+        <input type="submit" value="Update">
+      </form>
+      
+      <!-- <input type="button" id="updateNameButton" value="Update" /> -->
+    </span>
+  </div>
   <canvas id="table" height="600" width="1000" />
 </body>
 </html>

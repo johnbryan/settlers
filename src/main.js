@@ -1,62 +1,16 @@
 import {XyCoord, DrawUtils} from './helpers.js';
 import {DevCard} from './devcards.js';
 import {Board, Doodler} from './board.js';
+import {structureTypes, getCosts} from './settlersConstants.js';
 import * as ws from './ws.js';
 
 const canvas = document.getElementById('table');
 const ctx = canvas.getContext('2d');
-const drawUtils = new DrawUtils(ctx);
 
 let debug = false;
 
 const ACT_INSTRUCTION = `Take your next action (s,c,r,d,t), or Enter to pass`;
 const RESOURCE_CHOICE_NUMBERS = '1=brick, 2=wood, 3=sheep, 4=wheat, 5=ore';
-
-const structureTypes = {
-  settlement: 'settlement',
-  city: 'city',
-  road: 'road',
-  devCard: 'devCard',
-}
-
-function getCosts(type) {
-  if (type == structureTypes.settlement) {
-    return {
-      brick: 1,
-      wood: 1,
-      sheep: 1,
-      wheat: 1,
-      ore: 0,
-    }
-  }
-  if (type == structureTypes.city) {
-    return {
-      brick: 0,
-      wood: 0,
-      sheep: 0,
-      wheat: 2,
-      ore: 3,
-    }
-  }
-  if (type == structureTypes.road) {
-    return {
-      brick: 1,
-      wood: 1,
-      sheep: 0,
-      wheat: 0,
-      ore: 0,
-    }
-  }
-  if (type == structureTypes.devCard) {
-    return {
-      brick: 0,
-      wood: 0,
-      sheep: 1,
-      wheat: 1,
-      ore: 1,
-    }
-  }
-}
 
 // necessary? or could just have settlement/city lists under player
 class Building {
@@ -68,21 +22,22 @@ class Building {
 
   draw() {
     if (this.isCity) {
-      drawUtils.drawCity(this.coord, this.owner.color);
+      DrawUtils.drawCity(this.coord, this.owner.color);
     }
     else {
-      drawUtils.drawSettlement(this.coord, this.owner.color);
+      DrawUtils.drawSettlement(this.coord, this.owner.color);
     }
   }
 }
 
 class Player {
-  constructor(game, name, color) {
-    this.game = game;
+  constructor(name, color, index) {
     this.name = name;
     this.color = color;
+    this.index = index;
+
     this.buildings = [];
-    this.roads = [];  // list of [pt1, pt2] pairs?
+    this.roads = [];  // list of midpoints // formerly [pt1, pt2] pairs
 
     // Start with what is needed for initial placement. This is hidden from the
     // players until initial placement is done.
@@ -99,8 +54,7 @@ class Player {
   }
 
   addResource(resource, quantity) {
-    if (!quantity) quantity=1;
-    this.resources[resource] += quantity;
+    this.resources[resource] += quantity || 1;
 
     if (debug) {
       console.log(`${this.name} has resources:`);
@@ -122,7 +76,7 @@ class Player {
 
     const longestRoadPoints = 0;
     const largestArmyPoints = 0;
-    const pointCards = this.devCardsUsed.map(c => c.pointValue).reduce((total, pts) => total + pts, 0);
+    const pointCards = this.devCardsUsed.map(c => c.pointValue()).reduce((total, pts) => total + pts, 0);
 
     return buildingPoints + longestRoadPoints + largestArmyPoints + pointCards;
   }
@@ -146,15 +100,15 @@ class Player {
     this.resources.ore -= costs.ore;
   }
 
-  buildSettlement(coord) {
-    if (this.game.board.isOccupied(coord)) {
+  buildSettlement(coord, board) {
+    if (board.isOccupied(coord)) {
       console.log('This spot already taken!');
       return false;
     }
 
     this.deductResources(structureTypes.settlement);
     this.buildings.push(new Building(this, coord));
-    this.game.board.occupyVertex(coord, this);
+    board.occupyVertex(coord, this.index);
     return true;
   }
 
@@ -176,30 +130,35 @@ class Player {
     return false;
   }
 
-  buildRoad(coord1, coord2) {
-    const midpoint = XyCoord.averageCoords([coord1, coord2]);
-    if (this.game.board.isOccupied(midpoint)) {
+  buildRoad(midpoint, board) {
+    const [coord1, coord2] = board.getVertexesForMidpoint(midpoint);
+    // const midpoint = XyCoord.averageCoords([coord1, coord2]);
+    if (board.isOccupied(midpoint)) {
       console.log('This spot already taken!');
       return false;
     }
 
     this.deductResources(structureTypes.road);
-    this.roads.push([coord1, coord2]);
-    this.game.board.occupyEdge(midpoint, this);
+    this.roads.push(midpoint);
+    // this.roads.push([coord1, coord2]);
+    board.occupyEdge(midpoint, this.index);
     return true;
 
     // update longest road?
   }
 
   buyDevCard() {
-    const card = new DevCard(this.game);
-    const list = card.isUsable ? this.devCardsUnused : this.devCardsUsed;
+    const card = new DevCard();
+    const list = card.isUsable() ? this.devCardsUnused : this.devCardsUsed;
     list.push(card);
     this.deductResources(structureTypes.devCard);
   }
 
-  drawRoads() {
-    this.roads.forEach(([pt1, pt2]) => drawUtils.drawRoad(pt1, pt2, this.color));
+  drawRoads(board) {
+    for (const midpoint of this.roads) {
+      const [pt1, pt2] = board.getVertexesForMidpoint(midpoint);
+      DrawUtils.drawRoad(pt1, pt2, this.color);
+    }
   }
 
   drawBuildings() {
@@ -209,12 +168,12 @@ class Player {
 
 class Game {
   constructor() {
-    this.board = new Board(drawUtils);
+    this.board = new Board();
 
     this.players = [
-      new Player(this, "Dena", "red"),
-      new Player(this, "John", "white"),
-      // new Player(this, "Bob", "blue"),
+      new Player("Dena", "red", 0),
+      new Player("John", "white", 1),
+      // new Player("Bob", "blue", 2),
     ];
 
     this.whoseTurn = 0;  // index in this.players
@@ -230,6 +189,10 @@ class Game {
       robber: 'robber',
       pickResources: 'pickResources',  // for trades, YOP, etc
     }
+
+    this.phase = this.phases.initialPlacement;
+    this.trynaBuildType;
+    this.numCardsToDraw;
 
     // keep at end
     this.startInitialPlacements();
@@ -337,7 +300,7 @@ class Game {
         return;
       }
 
-      const success = this.currentPlayer().buildSettlement(snappedCoord);
+      const success = this.currentPlayer().buildSettlement(snappedCoord, this.board);
       if (!success) return;
 
       if (this.currentPlayer().getVictoryPoints() >= 2) {
@@ -357,8 +320,7 @@ class Game {
         return;
       }
 
-      const endsOfRoad = this.board.getVertexesForMidpoint(snappedToMid);
-      const success = this.currentPlayer().buildRoad(endsOfRoad[0], endsOfRoad[1]);
+      const success = this.currentPlayer().buildRoad(snappedToMid, this.board);
       if (!success) return;
 
       if (this.players[0].getVictoryPoints() >= 2) {
@@ -389,7 +351,7 @@ class Game {
         return;
       }
 
-      success = this.currentPlayer().buildSettlement(snappedCoord);
+      success = this.currentPlayer().buildSettlement(snappedCoord, this.board);
     }
     else if (this.trynaBuildType == structureTypes.city) {
       const snappedCoord = coord.snappedToGrid();
@@ -409,7 +371,7 @@ class Game {
         return;
       }
 
-      success = this.currentPlayer().buildRoad(...this.board.getVertexesForMidpoint(snappedToMid));
+      success = this.currentPlayer().buildRoad(snappedToMid, this.board);
     }
 
     if (success) {
@@ -487,7 +449,7 @@ class Game {
 
     if (index < totalUnused) {
       const target = this.currentPlayer().devCardsUnused[index];
-      target.use();
+      target.use(this);
 
       const left = this.currentPlayer().devCardsUnused.slice(0, index);
       const right = this.currentPlayer().devCardsUnused.slice(index+1, totalUnused);
@@ -502,23 +464,123 @@ class Game {
   draw() {
     // Must be in order - things drawn second will be layered on top
     this.board.draw();
-    this.players.forEach(p => p.drawRoads());
+    this.players.forEach(p => p.drawRoads(this.board));
     this.players.forEach(p => p.drawBuildings());
 
     const player = this.currentPlayer();
-    drawUtils.drawCurrentPlayerColorIcon(player.color);
-    drawUtils.drawInstructions(`${player.name}, ${this.instructions}!`);
+    DrawUtils.drawCurrentPlayerColorIcon(player.color);
+    DrawUtils.drawInstructions(`${player.name}, ${this.instructions}!`);
 
     if (this.phase != this.phases.initialPlacement) {
-      drawUtils.drawResourceCardImages(player.resources);
-      drawUtils.drawDevCardImages(player.devCardsUnused, player.devCardsUsed);
-      drawUtils.drawVictoryPoints(player.getVictoryPoints());
+      DrawUtils.drawResourceCardImages(player.resources);
+      DrawUtils.drawDevCardImages(player.devCardsUnused, player.devCardsUsed);
+      DrawUtils.drawVictoryPoints(player.getVictoryPoints());
+    }
+  }
+
+  setState(state) {
+    const {board, whoseTurn, buildings, roads, players,
+           instructions, phase, trynaBuildType, numCardsToDraw} = state;
+
+    if (board) {
+      this.board.setState(board);
+    }
+    if (board && board.occupiedVertexes) {
+      for (const player of this.players) player.buildings = [];
+      for (const [hash, playerIndex] of board.occupiedVertexes) {
+        if (playerIndex == null) continue;
+        const coord = this.board.allHashCoords.get(hash);
+        const player = this.players[playerIndex];
+        player.buildings.push(new Building(player, coord));
+      }
+    }
+    if (board && board.occupiedEdges) {
+      for (const player of this.players) player.roads = [];
+      for (const [hash, playerIndex] of board.occupiedEdges) {
+        if (playerIndex == null) continue;
+        const coord = this.board.allHashCoords.get(hash);
+        const player = this.players[playerIndex];
+        player.roads.push(coord);
+      }
+    }
+    if (players) {
+      for (let i=0; i<players.length; i++) {
+        const remotePlayer = players[i];
+        const localPlayer = this.players[i];
+
+        // Only the player themself can update their name
+        if (i != sessionPlayerIndex) {
+          localPlayer.name = remotePlayer.name;
+        }
+
+        localPlayer.resources = remotePlayer.resources;
+        localPlayer.devCardsUnused = remotePlayer.devCardsUnused.map(({type}) => new DevCard(type));
+        localPlayer.devCardsUsed = remotePlayer.devCardsUsed.map(({type}) => new DevCard(type));
+      }
+    }
+    if (whoseTurn != undefined) this.whoseTurn = whoseTurn;
+    if (instructions != undefined) this.instructions = instructions;
+    if (phase != undefined) this.phase = phase;
+    if (trynaBuildType != undefined) this.trynaBuildType = trynaBuildType;
+    if (numCardsToDraw != undefined) this.numCardsToDraw = numCardsToDraw;
+  }
+
+  getState() {
+    const {whoseTurn, instructions, trynaBuildType, phase, numCardsToDraw} = this;
+    return {
+      board: this.board.getState(),
+      // players: this.players.map(p => ({name: p.name, color: p.color})),
+      players: this.players.map(
+          ({name, resources, devCardsUnused, devCardsUsed}) =>
+          ({name, resources, devCardsUnused, devCardsUsed})),
+      // buildings
+      // roads
+      whoseTurn,
+      instructions,
+      phase,
+      trynaBuildType,
+      numCardsToDraw,
     }
   }
 }
 
-const doodler = new Doodler(drawUtils);
+const doodler = new Doodler();
 const game = new Game();
+
+// which player is connected in this client, populated later from server
+let sessionPlayerIndex = 0;
+
+ws.webSocket.onmessage = (event) => {
+  console.log("Got a websocket event:");
+  console.log(event);
+  const obj = JSON.parse(event.data);
+
+  if (obj.numPlayersConnected) {
+    sessionPlayerIndex = obj.numPlayersConnected - 1;
+
+    if (obj.numPlayersConnected == 1) {
+      ws.sendMessage({
+        note: `Game created`,
+        gameState: game.getState(),
+      });
+    }
+  }
+
+  if (obj.gameState) {
+    console.log('updating whole game!');
+    console.log(obj.gameState);
+
+    game.setState(obj.gameState);
+  }
+};
+
+function updatePlayerName(event) {
+  event.preventDefault();  // don't refresh the page
+  const newName = document.getElementById("nameInput").value;
+  game.players[sessionPlayerIndex].name = newName;
+}
+// apparently this is better than having onsubmit in the html
+document.getElementById("nameForm").addEventListener('submit', updatePlayerName);
 
 function onClick(event) {
   const mouseX = event.pageX - canvas.offsetLeft;
@@ -530,6 +592,11 @@ function onClick(event) {
   if (debug) {
     doodler.addFadingPoint(rawCoord);
   }
+
+  ws.sendMessage({
+    note: `another player clicked!`,
+    gameState: game.getState(),
+  });
 }
 
 canvas.addEventListener('click', onClick, false);
@@ -537,7 +604,7 @@ canvas.addEventListener('click', onClick, false);
 setInterval(draw, 50);
 
 function draw() {
-  if (!drawUtils) return;
+  if (!ctx) return;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   game.draw();
@@ -548,14 +615,14 @@ function draw() {
     // Show grid
     // for (let x=0; x<9; x++) {
     //   for (let y=0; y<7; y++) {
-    //     drawPoint(ctx, new XyCoord(x, y));
+    //     drawPoint(new XyCoord(x, y));
     //   }
     // }
 
     // Show midpoint grid
     for (let x=0; x<8; x+=.1) {
       for (let y=0; y<7; y+=.1) {
-        drawUtils.drawPoint(ctx, new XyCoord(x, y).snappedToMidpointGrid());
+        DrawUtils.drawPoint(new XyCoord(x, y).snappedToMidpointGrid());
       }
     }
   }
@@ -581,11 +648,10 @@ function handleNumberInput(n) {
 document.onkeydown = function(e) {
   if (game.phase == game.phases.initialPlacement) {
     console.log("no doing stuff in setup phase!");
-    return;
   }
 
   // Digit 0-9. Different uses in different phases.
-  if (0 <= e.key && e.key <= 9) {
+  else if (0 <= e.key && e.key <= 9) {
     let n = e.key;
     if (e.shiftKey) n+=10;  // so we can get 10,11,12
 
@@ -638,4 +704,9 @@ document.onkeydown = function(e) {
   else {
     console.log(`Unused key "${e.key}" in ${game.phase} phase.`);
   }
+
+  ws.sendMessage({
+    note: `another player hit ${e.key}!`,
+    gameState: game.getState(),
+  });
 };

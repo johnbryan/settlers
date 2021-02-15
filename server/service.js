@@ -1,23 +1,52 @@
-const express = require('express');
 const WebSocket = require('ws');
 
-const app = express();
-const port = process.env.PORT || 8080;
 const wsPort = process.env.WSPORT || 5005;
-
 const wsServer = new WebSocket.Server({port: wsPort});
 
-// app.get('/', async (req, resp) => {
-//   console.log('got a request!');
-//   resp.send('hello!');
-// });
-
-app.listen(port, () => {
-  console.log(`Running! Listening at http://localhost:${port}`);
-});
-
-// Setup a map of gameId to sockets.
+// Set up a map of `/gameId` -> Set of sockets.
 const gameClientMap = new Map();
+const gameStates = new Map(); // gameId -> current state obj
+/*
+gameState
+- board
+  - tileResources [
+      - coord {x,y}
+      - resource
+      - number
+    ]
+  - occupiedVertexes [[hash, playerIndex], [hash, index], ...]
+  - occupiedEdges (same)
+- players [
+    - name
+    - color
+  ]
+
+
+
+gameState
+- whoseTurn
+- board
+  - tileResources [
+      - coord {x,y}
+      - resource
+      - number
+    ]
+- buildings [
+    - coord {x,y}
+    - playerIndex
+    - isCity
+  ]
+- roads [
+    - coord {x,y}
+    - playerIndex
+  ]
+- players [
+    - name
+    - resources
+    - devCardsUsed
+    - devCardsUnused
+  ]
+*/
 
 wsServer.on('connection', (socketClient, request) => {
   console.log('connected');
@@ -31,16 +60,31 @@ wsServer.on('connection', (socketClient, request) => {
 
   gameClientMap.get(gameUrl).add(socketClient);
 
+  const obj = {
+    numPlayersConnected: gameClientMap.get(gameUrl).size,
+  };
+
+  // If another player has already sent a gamestate, use that, so we open
+  // immediately with the same board.
+  if (gameStates.has(gameUrl)) {
+    obj.gameState = gameStates.get(gameUrl);
+  }
+  socketClient.send(JSON.stringify(obj));
+
   // Message handler
   socketClient.on('message', (message) => {
     console.log(message);
     try {
       const obj = JSON.parse(message);
-      // const {gameId} = obj;
+      const {gameId, gameState} = obj;
+      const gameUrl = '/' + gameId;
+      gameStates.set(gameUrl, gameState);
 
       const payload = JSON.stringify(obj);
-      for (const client of wsServer.clients) {
-        if (client.readyState === WebSocket.OPEN) {
+
+      // broadcast message to all other clients on the same game
+      for (const client of gameClientMap.get(gameUrl)) {
+        if (client.readyState === WebSocket.OPEN && client != socketClient) {
           client.send(payload);
         }
       }
@@ -50,7 +94,7 @@ wsServer.on('connection', (socketClient, request) => {
     }
   });
 
-  socketClient.on('close', (socketClient) => {
+  socketClient.on('close', () => {
     gameClientMap.get(gameUrl).delete(socketClient);
     if (gameClientMap.size == 0) {
       gameClientMap.delete(gameUrl);

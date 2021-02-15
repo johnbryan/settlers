@@ -21,11 +21,9 @@ devCardImages.roadBuilding.src = '../images/RoadBuilding.jpg';
 devCardImages.point.src = '../images/Point.jpg';
 
 class DevCard {
-  constructor(game) {
-    this.game = game;
-    this.type = DevCard.chooseRandomType();
-    this.isUsable = this.type != devCardTypes.point;
-    this.pointValue = this.type == devCardTypes.point ? 1 : 0;
+  constructor(type) {
+    if (!type) type = DevCard.chooseRandomType()
+    this.type = type;
   }
 
   static chooseRandomType() {
@@ -35,20 +33,28 @@ class DevCard {
     return devCardTypes.knight;
   }
 
+  isUsable() {
+    return this.type != devCardTypes.point;
+  }
+
+  pointValue() {
+    return this.type == devCardTypes.point ? 1 : 0;
+  }
+
   getImage() {
     return devCardImages[this.type];
   }
 
-  use() {
+  use(game) {
     console.log(`Using ${this.type} card!`);
 
     switch (this.type) {
       case devCardTypes.knight:
-        this.game.startRobberPhase('you played a Knight!');
+        game.startRobberPhase('you played a Knight!');
         break;
       case devCardTypes.yop:
-        this.game.setInstructions('you played a YOP! Pick 2 resources.')
-        this.game.startPickResourcesPhase(2);
+        game.setInstructions('you played a YOP! Pick 2 resources.')
+        game.startPickResourcesPhase(2);
         break;
       case devCardTypes.monopoly:
         console.error("haven't programmed monopoly cards yet!");
@@ -58,10 +64,10 @@ class DevCard {
         break;
       case devCardTypes.point:
         console.error("point cards don't need to/cannot be used.");
+        break;
       default:
         console.error(`haven't programmed ${this.type} cards yet!`);
     }
-    // this.isUsed = true;
   }
 }
 
