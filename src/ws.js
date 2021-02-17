@@ -1,6 +1,6 @@
 const urlParams = new URLSearchParams(window.location.search);
 const gameId = urlParams.get('game');
-export const webSocket = new WebSocket(`ws://${window.location.hostname}:5005/${gameId}`);
+export const webSocket = new WebSocket(`ws://34.68.33.118:5005/${gameId}`);
 
 let bufferedMessages = [];
 sendMessage({});

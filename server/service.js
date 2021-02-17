@@ -78,6 +78,10 @@ wsServer.on('connection', (socketClient, request) => {
       const obj = JSON.parse(message);
       const {gameId, gameState} = obj;
       const gameUrl = '/' + gameId;
+
+      // Clients don't send a state until they've received the server state.
+      // If they learn from the server they are the first player, then they
+      // create the initial state and send to the server.
       gameStates.set(gameUrl, gameState);
 
       const payload = JSON.stringify(obj);
