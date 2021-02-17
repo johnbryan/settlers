@@ -13,12 +13,12 @@ const devCardImages = {
   point: new Image(),
   unturned: new Image(),
 }
-devCardImages.unturned.src = '../images/devCardBack.jpg';
-devCardImages.knight.src = '../images/Knight.jpg';
-devCardImages.yop.src = '../images/YOP.jpg';
-devCardImages.monopoly.src = '../images/Monopoly.jpg';
-devCardImages.roadBuilding.src = '../images/RoadBuilding.jpg';
-devCardImages.point.src = '../images/Point.jpg';
+devCardImages.unturned.src = 'images/devCardBack.jpg';
+devCardImages.knight.src = 'images/Knight.jpg';
+devCardImages.yop.src = 'images/YOP.jpg';
+devCardImages.monopoly.src = 'images/Monopoly.jpg';
+devCardImages.roadBuilding.src = 'images/RoadBuilding.jpg';
+devCardImages.point.src = 'images/Point.jpg';
 
 class DevCard {
   constructor(type) {
