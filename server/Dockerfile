@@ -12,6 +12,5 @@ RUN npm install --only=production
 COPY . ./
 
 # Run the web service on container startup.
-EXPOSE 8080
 EXPOSE 5005
 CMD [ "npm", "start" ]
