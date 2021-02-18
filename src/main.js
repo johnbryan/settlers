@@ -171,9 +171,10 @@ class Game {
     this.board = new Board();
 
     this.players = [
-      new Player("Dena", "red", 0),
-      new Player("John", "white", 1),
-      // new Player("Bob", "blue", 2),
+      new Player("Player 1", "red", 0),
+      new Player("Player 2", "white", 1),
+      new Player("Player 3", "blue", 2),
+      // new Player("Player 4", "orange", 3),
     ];
 
     this.whoseTurn = 0;  // index in this.players
