@@ -39,11 +39,11 @@ const cardImages = {
   wheat: new Image(),
   ore: new Image(),
 }
-cardImages.brick.src = '../images/brick.jpg';
-cardImages.wood.src = '../images/wood.jpg';
-cardImages.sheep.src = '../images/sheep.jpg';
-cardImages.wheat.src = '../images/wheat.jpg';
-cardImages.ore.src = '../images/ore.jpg';
+cardImages.brick.src = 'images/brick.jpg';
+cardImages.wood.src = 'images/wood.jpg';
+cardImages.sheep.src = 'images/sheep.jpg';
+cardImages.wheat.src = 'images/wheat.jpg';
+cardImages.ore.src = 'images/ore.jpg';
 
 
 class XyCoord {
