@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "target": "settlers",
     "public": "public",
     "ignore": [
       "firebase.json",
