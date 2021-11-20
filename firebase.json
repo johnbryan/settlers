@@ -1,7 +1,6 @@
 {
   "hosting": {
     "site": "settlers-jbryan",
-    "target": "settlers",
     "public": "public",
     "ignore": [
       "firebase.json",
