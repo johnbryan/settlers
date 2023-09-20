@@ -1,5 +1,12 @@
-const WebSocket = require('ws');
+// Noop web server for http so that cloud run can verify it's up?
+const express = require('express');
+const app = express();
+const http = require('http').Server(app);
+const httpPort = process.env.PORT || 8080;
+http.listen(port, () => console.log('listening on port ' + httpPort));
 
+// The actual stuff I want to do
+const WebSocket = require('ws');
 const wsPort = process.env.WSPORT || 5005;
 const wsServer = new WebSocket.Server({port: wsPort});
 
