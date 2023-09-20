@@ -1,7 +1,8 @@
 const urlParams = new URLSearchParams(window.location.search);
 const gameId = urlParams.get('game');
-// export const webSocket = new WebSocket(`ws://34.68.33.118:5005/${gameId}`);
-export const webSocket = new WebSocket(`ws://${window.location.hostname}:5005/${gameId}`);
+// Prod is https, and apparently the ws security needs to match the http security.
+const wsProtocol = window.location.protocol ? 'wss' : 'ws';
+export const webSocket = new WebSocket(`${wsProtocol}://${window.location.hostname}:5005/${gameId}`);
 
 let bufferedMessages = [];
 sendMessage({});
